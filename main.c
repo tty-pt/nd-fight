@@ -1,27 +1,45 @@
 #include "./include/uapi/fight.h"
 
-#include <nd/nd.h>
-#include <nd/mortal.h>
-#include <nd/attr.h>
-
 #include <stdlib.h>
 #include <stdio.h>
+
+#include <nd/nd.h>
+#include <nd/level.h>
+#include <nd/attr.h>
+#include <nd/mortal.h>
+
+typedef struct {
+	unsigned char stat, lvl, lvl_v, wt, flags;
+} fighter_skel_t;
+
+typedef struct {
+	unsigned target;
+	unsigned char klock;
+	unsigned flags;
+	unsigned short wtso;
+	unsigned lvl, cxp;
+} fighter_t;
 
 unsigned fighter_hd, fighter_skel_hd, bcp_stats, act_fight;
 
 /* API */
 
-SIC_DEF(short, fight_damage, unsigned, dmg_type, short, dmg, short, def, unsigned, def_type);
+SIC_DEF(unsigned, fight_damage, unsigned, dmg_type, long, dmg, long, def, unsigned, def_type);
 SIC_DEF(int, fighter_attack, unsigned, player_ref, sic_str_t, ss, hit_t, hit);
+SIC_DEF(unsigned, fighter_wt, unsigned, ref);
+SIC_DEF(unsigned, fighter_target, unsigned, ref);
+SIC_DEF(int, fighter_skel_add, unsigned, skid,
+		unsigned, wt, unsigned char, lvl,
+		unsigned char, lvl_v, unsigned char, flags);
 
 /* SIC */
 
-SIC_DEF(int, on_will_attack, unsigned, ent_ref)
-SIC_DEF(int, on_attack, unsigned, ent_ref, hit_t, hit)
-SIC_DEF(int, on_hit, unsigned, ent_ref, hit_t, hit)
-SIC_DEF(int, on_did_attack, unsigned, player_ref, hit_t, hit)
-SIC_DEF(int, on_dodge_attempt, unsigned, player_ref, hit_t, hit)
-SIC_DEF(int, on_dodge, unsigned, player_ref, hit_t, hit)
+SIC_DEF(hit_t, on_will_attack, unsigned, ent_ref, double, dt);
+SIC_DEF(int, on_attack, unsigned, ent_ref, hit_t, hit);
+SIC_DEF(int, on_hit, unsigned, ent_ref, hit_t, hit);
+SIC_DEF(int, on_did_attack, unsigned, player_ref, hit_t, hit);
+SIC_DEF(int, on_dodge_attempt, unsigned, player_ref, hit_t, hit);
+SIC_DEF(int, on_dodge, unsigned, player_ref, hit_t, hit);
 
 int on_before_leave(unsigned ref) {
 	fighter_t fighter;
@@ -99,13 +117,13 @@ fighter_award(unsigned player_ref, fighter_t *fighter, fighter_t *victim)
 	unsigned cxp = fighter->cxp;
 	nd_writef(player_ref, "You gain %u xp!\n", xp);
 	cxp += xp;
-	call_attr_award(player_ref, 2 * (cxp / 1000));
-	while (cxp >= 1000) {
-		nd_writef(player_ref, "You level up!\n");
-		cxp -= 1000;
-		fighter->lvl += 1;
+
+	if (cxp >= 1000) {
+		call_attr_award(player_ref, 2 * (cxp / 1000));
+		call_level_up(player_ref, (cxp / 1000));
 	}
-	fighter->cxp = cxp;
+
+	fighter->cxp = cxp / 1000;
 }
 
 static inline unsigned char
@@ -116,28 +134,28 @@ d20(void)
 
 // returns 1 if target dodges
 static inline int
-dodge_get(unsigned ref, fighter_t *fighter)
+dodge_get(unsigned ref)
 {
 	return d20() < call_effect(ref, AF_DODGE);
 }
 
 int
-dodge(unsigned ref, hit_t hit)
+dodge(unsigned ref, unsigned target_ref, hit_t hit)
 {
-	fighter_t fighter;
 	char *wts[BUFSIZ];
 
 	int stuck = call_on_dodge_attempt(ref, hit);
-	nd_get(fighter_hd, &fighter, &ref);
-	nd_get(HD_WTS, wts, &fighter.wtst);
 
-	if (stuck || call_effect(ref, AF_MOV) || !dodge_get(ref, &fighter)) {
+	unsigned wt = call_fighter_wt(ref);
+	nd_get(HD_WTS, wts, &wt);
+
+	if (stuck || call_effect(ref, AF_MOV) > 0 || !dodge_get(ref)) {
 		call_on_hit(ref, hit);
 		return 1;
 	}
 
 	call_on_dodge(ref, hit);
-	notify_wts_to(fighter.target, ref, "dodge", "dodges", "'s %s", wts);
+	notify_wts_to(target_ref, ref, "dodge", "dodges", "'s %s", wts);
 	return 0;
 }
 
@@ -158,10 +176,10 @@ notify_attack(unsigned player_ref, unsigned target_ref, sic_str_t ss, hit_t hit)
 		buf[i++] = '(';
 
 		if (hit.ndmg)
-			i += snprintf(&buf[i], sizeof(buf) - i, "%d%s", hit.ndmg, hit.cdmg ? ", " : "");
+			i += snprintf(&buf[i], sizeof(buf) - i, "%ld%s", hit.ndmg, hit.cdmg ? ", " : "");
 
 		if (hit.cdmg)
-			i += snprintf(&buf[i], sizeof(buf) - i, "%s%d%s", ansi_fg[hit.color], hit.cdmg, ANSI_RESET);
+			i += snprintf(&buf[i], sizeof(buf) - i, "%s%ld%s", ansi_fg[hit.color], hit.cdmg, ANSI_RESET);
 
 		buf[i++] = ')';
 	}
@@ -170,17 +188,20 @@ notify_attack(unsigned player_ref, unsigned target_ref, sic_str_t ss, hit_t hit)
 	notify_wts_to(player_ref, target_ref, wts, wts_plural(wts), "%s", buf);
 }
 
-static inline short
-randd_dmg(short dmg)
+static inline unsigned
+randd_dmg(unsigned dmg)
 {
-	register unsigned short xx = 1 + (random() & 7);
+	register unsigned xx = 1 + (random() & 7);
 	return xx = dmg + ((dmg * xx * xx * xx) >> 9);
 }
 
-short
-fight_damage(unsigned dmg_type, short dmg,
-	short def, unsigned def_type)
+unsigned
+fight_damage(unsigned dmg_type, long dmg,
+	long def, unsigned def_type)
 {
+	if (!dmg)
+		return 0;
+
 	if (dmg > 0) {
 		element_t element;
 		nd_get(HD_ELEMENT, &element, &def_type);
@@ -211,7 +232,7 @@ int fighter_attack(unsigned ref, sic_str_t ss, hit_t hit) {
 	if (fighter.target == NOTHING)
 		return 0;
 
-	if (dodge(ref, hit))
+	if (dodge(ref, fighter.target, hit))
 		return 0;
 
 	nd_get(fighter_hd, &fighter, &ref);
@@ -221,11 +242,37 @@ int fighter_attack(unsigned ref, sic_str_t ss, hit_t hit) {
 	return hit.ndmg + hit.cdmg;
 }
 
+unsigned fighter_wt(unsigned ref) {
+	fighter_t fighter;
+	nd_get(fighter_hd, &fighter, &ref);
+	return fighter.wtso;
+}
+
+unsigned fighter_target(unsigned ref) {
+	fighter_t fighter;
+	nd_get(fighter_hd, &fighter, &ref);
+	return fighter.target;
+}
+
+hit_t on_will_attack(unsigned ref, double dt) {
+	fighter_t fighter;
+	hit_t hit;
+
+	nd_get(fighter_hd, &fighter, &ref);
+	hit.wtst = fighter.wtso;
+	hit.ndmg = -fight_damage(ELM_PHYSICAL,
+			call_effect(ref, AF_DMG),
+			call_effect(fighter.target, AF_DEF)
+			+ call_effect(fighter.target, AF_MDEF),
+			dt);
+	return hit;
+}
+
 int
-on_mortal_update(unsigned ref, double dt __attribute__((unused)))
+on_mortal_update(unsigned ref, double dt)
 {
 	fighter_t fighter, target;
-	unsigned target_ref;
+	hit_t hit;
 
 	nd_get(fighter_hd, &fighter, &ref);
 	if (fighter.target == NOTHING)
@@ -238,28 +285,15 @@ on_mortal_update(unsigned ref, double dt __attribute__((unused)))
 		nd_put(fighter_hd, &fighter.target, &target);
 	}
 
-	fighter.flags |= FF_ATTACK;
-	nd_put(fighter_hd, &ref, &fighter);
+	hit = call_on_will_attack(ref, dt);
 
-	fighter.attack.ndmg = -fight_damage(ELM_PHYSICAL,
-			call_effect(ref, AF_DMG),
-			call_effect(fighter.target, AF_DEF)
-			+ call_effect(fighter.target, AF_MDEF),
-			dt);
-	fighter.attack.wtst = fighter.wtso;
-	nd_put(fighter_hd, &ref, &fighter);
-
-	call_on_will_attack(ref);
-
-	nd_get(fighter_hd, &fighter, &ref);
 	sic_str_t ss = { .str = "" };
-	if (fighter.flags & FF_ATTACK)
-		fighter_attack(ref, ss, fighter.attack);
+	fighter_attack(ref, ss, hit);
 
 	return 0;
 }
 
-int on_move(unsigned player_ref, int cant_move) {
+int on_move(unsigned player_ref) {
 	fighter_t fighter;
 
 	nd_get(fighter_hd, &fighter, &player_ref);
@@ -309,14 +343,13 @@ on_status(unsigned player_ref)
 {
 	fighter_t fighter;
 	nd_get(fighter_hd, &fighter, &player_ref);
-	nd_writef(player_ref, "Fighter:\tlock %u\n", fighter.klock);
+	nd_writef(player_ref, "Fight\tlock %3u\n", fighter.klock);
 	return 0;
 }
 
 int on_murder(unsigned ref, unsigned victim_ref) {
 	fighter_t fighter, victim;
 
-	nd_get(fighter_hd, &fighter, &ref);
 	nd_get(fighter_hd, &victim, &victim_ref);
 
 	if (victim.target && (victim.flags & FF_AGGRO)) {
@@ -326,11 +359,12 @@ int on_murder(unsigned ref, unsigned victim_ref) {
 		nd_put(fighter_hd, &victim.target, &tartar);
 	}
 
-	if (ref != NOTHING) {
-		fighter_award(ref, &fighter, &victim);
-		fighter.target = NOTHING;
-	}
+	if (ref == NOTHING)
+		return 1;
 
+	nd_get(fighter_hd, &fighter, &ref);
+	fighter_award(ref, &fighter, &victim);
+	fighter.target = NOTHING;
 	nd_put(fighter_hd, &ref, &fighter);
 	return 0;
 }
@@ -339,7 +373,7 @@ static inline void
 stats_init(unsigned ref, fighter_t *fighter, fighter_skel_t *skel)
 {
 	unsigned char stat = skel->stat;
-	int lvl = skel->lvl, spend, i, sp,
+	int lvl = skel->lvl, spend, i = 0, sp,
 	    v = skel->lvl_v ? skel->lvl_v : 0xf;
 
 	lvl += random() & v;
@@ -349,7 +383,7 @@ stats_init(unsigned ref, fighter_t *fighter, fighter_skel_t *skel)
 
 	spend = 1 + lvl;
 	char attr_c[] = "acdiwh";
-	for (char *c = attr_c; *c; c++)
+	for (char *c = attr_c; *c; c++, i++)
 		if (stat & (1<<i)) {
 			sp = random() % spend;
 			call_train(ref, *c, sp);
@@ -358,19 +392,13 @@ stats_init(unsigned ref, fighter_t *fighter, fighter_skel_t *skel)
 	fighter->lvl = lvl;
 }
 
-unsigned hp_max(unsigned ref) {
-	unsigned last;
-	fighter_t fighter;
-
-	sic_last(&last);
-	nd_get(fighter_hd, &fighter, &ref);
-	return last + 5 * fighter.lvl;
-}
-
-int on_birth(unsigned ref, uint64_t v) {
+int on_add(unsigned ref, unsigned type, uint64_t v __attribute__((unused))) {
 	OBJ obj;
 	fighter_t fighter;
 	fighter_skel_t skel;
+
+	if (type != TYPE_ENTITY)
+		return 1;
 
 	memset(&fighter, 0, sizeof(fighter));
 
@@ -386,7 +414,7 @@ int on_birth(unsigned ref, uint64_t v) {
 	return 0;
 }
 
-struct icon on_icon(struct icon i, unsigned ref, unsigned type) {
+struct icon on_icon(struct icon i, unsigned ref __attribute__((unused)), unsigned type) {
 	if (type != TYPE_ENTITY)
 		return i;
 
@@ -394,16 +422,25 @@ struct icon on_icon(struct icon i, unsigned ref, unsigned type) {
 	return i;
 }
 
-void mod_open() {
-	SIC_AREG(fight_damage);
-	SIC_AREG(fighter_attack);
+int fighter_skel_add(
+		unsigned skid,
+		unsigned wt,
+		unsigned char lvl,
+		unsigned char lvl_v,
+		unsigned char flags)
+{
+	fighter_skel_t fighter_skel = {
+		.wt = wt,
+		.lvl = lvl,
+		.lvl_v = lvl_v,
+		.flags = flags,
+	};
 
-	SIC_AREG(on_attack);
-	SIC_AREG(on_hit);
-	SIC_AREG(on_did_attack);
-	SIC_AREG(on_dodge_attempt);
-	SIC_AREG(on_dodge);
+	nd_put(fighter_skel_hd, &skid, &fighter_skel);
+	return 0;
+}
 
+void mod_open(void) {
 	nd_len_reg("fighter", sizeof(fighter_t));
 	nd_len_reg("fighter_skel", sizeof(fighter_skel_t));
 	// FIXME. If we chane the order of the following two lines, we get horrible bugs
@@ -415,6 +452,6 @@ void mod_open() {
 	nd_register("fight", do_fight, 0);
 }
 
-void mod_install() {
+void mod_install(void) {
 	mod_open();
 }
