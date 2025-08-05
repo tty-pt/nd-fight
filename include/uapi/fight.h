@@ -15,8 +15,8 @@ enum fighter_flags {
 
 /* API */
 
-SIC_DECL(unsigned, fight_damage, unsigned, dmg_type, long, dmg, long, def, unsigned, def_type);
-SIC_DECL(int, fighter_attack, unsigned, player_ref, sic_str_t, ss, hit_t, hit);
+SIC_DECL(long, fight_damage, unsigned, dmg_type, long, dmg, long, def, unsigned, def_type);
+SIC_DECL(int, fighter_attack, unsigned, player_ref, hit_t, hit);
 SIC_DECL(unsigned, fighter_wt, unsigned, ref);
 SIC_DECL(unsigned, fighter_target, unsigned, ref);
 SIC_DECL(int, fighter_skel_add,

@@ -25,8 +25,8 @@ unsigned wt_hit, wt_dodge;
 
 /* API */
 
-SIC_DEF(unsigned, fight_damage, unsigned, dmg_type, long, dmg, long, def, unsigned, def_type);
-SIC_DEF(int, fighter_attack, unsigned, player_ref, sic_str_t, ss, hit_t, hit);
+SIC_DEF(long, fight_damage, unsigned, dmg_type, long, dmg, long, def, unsigned, def_type);
+SIC_DEF(int, fighter_attack, unsigned, player_ref, hit_t, hit);
 SIC_DEF(unsigned, fighter_wt, unsigned, ref);
 SIC_DEF(unsigned, fighter_target, unsigned, ref);
 SIC_DEF(int, fighter_skel_add,
@@ -163,15 +163,18 @@ int
 dodge(unsigned ref, unsigned target_ref, hit_t hit)
 {
 	int stuck = call_on_dodge_attempt(ref, hit);
+	char wts[BUFSIZ];
+	char extra[BUFSIZ];
 
 	if (stuck || call_effect(ref, AF_MOV) > 0 || !dodge_get(ref)) {
-		call_on_hit(ref, hit);
-		return 1;
+		return 0;
 	}
 
 	call_on_dodge(ref, hit);
-	call_verb_to(target_ref, ref, wt_dodge, " attack");
-	return 0;
+	nd_get(HD_WTS, wts, &hit.wt);
+	snprintf(extra, sizeof(extra), "'s %s", wts);
+	call_verb_to(target_ref, ref, wt_dodge, extra);
+	return 1;
 }
 
 static inline void
@@ -206,22 +209,20 @@ int on_hit(unsigned ref, hit_t hit) {
 	sic_str_t ss = { .pos = 0 };
 
 	nd_get(fighter_hd, &fighter, &ref);
-	unsigned wt = call_fighter_wt(ref);
-	hit.wt = wt;
 	notify_attack(ref, fighter.target, ss, hit);
 	call_mortal_damage(ref, fighter.target, hit.ndmg + hit.cdmg);
 	call_on_did_attack(ref, hit);
 	return 0;
 }
 
-static inline unsigned
-randd_dmg(unsigned dmg)
+static inline long
+randd_dmg(long dmg)
 {
-	register unsigned xx = 1 + (random() & 7);
+	register long xx = 1 + (random() & 7);
 	return xx = dmg + ((dmg * xx * xx * xx) >> 9);
 }
 
-unsigned
+long
 fight_damage(unsigned dmg_type, long dmg,
 	long def, unsigned def_type)
 {
@@ -249,7 +250,7 @@ fight_damage(unsigned dmg_type, long dmg,
 	return randd_dmg(dmg - def);
 }
 
-int fighter_attack(unsigned ref, sic_str_t ss, hit_t hit) {
+int fighter_attack(unsigned ref, hit_t hit) {
 	fighter_t fighter;
 
 	call_on_attack(ref, hit);
@@ -261,10 +262,7 @@ int fighter_attack(unsigned ref, sic_str_t ss, hit_t hit) {
 	if (dodge(ref, fighter.target, hit))
 		return 0;
 
-	nd_get(fighter_hd, &fighter, &ref);
-	notify_attack(ref, fighter.target, ss, hit);
-	call_mortal_damage(ref, fighter.target, hit.ndmg + hit.cdmg);
-	call_on_did_attack(ref, hit);
+	call_on_hit(ref, hit);
 	return hit.ndmg + hit.cdmg;
 }
 
@@ -284,13 +282,15 @@ hit_t on_will_attack(unsigned ref, double dt) {
 	fighter_t fighter;
 	hit_t hit;
 
+	hit.wt = call_fighter_wt(ref);
 	nd_get(fighter_hd, &fighter, &ref);
-	hit.wt = wt_hit;
-	hit.ndmg = -fight_damage(ELM_PHYSICAL,
+	hit.ndmg = 1 + fight_damage(ELM_PHYSICAL,
 			call_effect(ref, AF_DMG),
 			call_effect(fighter.target, AF_DEF)
 			+ call_effect(fighter.target, AF_MDEF),
 			dt);
+	if (hit.ndmg < 0)
+		hit.ndmg = 0;
 	hit.cdmg = 0;
 	return hit;
 }
@@ -314,8 +314,7 @@ on_mortal_life(unsigned ref, double dt)
 
 	hit = call_on_will_attack(ref, dt);
 
-	sic_str_t ss = { .str = "" };
-	fighter_attack(ref, ss, hit);
+	fighter_attack(ref, hit);
 
 	return 0;
 }
