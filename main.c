@@ -43,10 +43,10 @@ SIC_DEF(int, on_dodge_attempt, unsigned, player_ref, hit_t, hit);
 SIC_DEF(int, on_dodge, unsigned, player_ref, hit_t, hit);
 
 static inline void fighter_untarget(unsigned ref, fighter_t *fighter, unsigned loc) {
-	nd_cur_t c = nd_iter(HD_CONTENTS, &loc);
+	unsigned c = nd_iter(HD_CONTENTS, &loc);
 	unsigned other_ref;
 
-	while (nd_next(&loc, &other_ref, &c)) {
+	while (nd_next(&loc, &other_ref, c)) {
 		fighter_t other;
 
 		nd_get(fighter_hd, &other, &other_ref);
@@ -90,8 +90,8 @@ fighter_aggro(unsigned ref)
 
 	nd_get(HD_OBJ, &obj, &ref);
 	
-	nd_cur_t c = nd_iter(HD_CONTENTS, &obj.location);
-	while (nd_next(&obj.location, &aggro_ref, &c)) {
+	unsigned c = nd_iter(HD_CONTENTS, &obj.location);
+	while (nd_next(&obj.location, &aggro_ref, c)) {
 		fighter_t aggro;
 
 		if (nd_get(fighter_hd, &aggro, &aggro_ref))
