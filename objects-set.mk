@@ -1,0 +1,1 @@
+CFLAGS-libnd-fight-o := -fPIC

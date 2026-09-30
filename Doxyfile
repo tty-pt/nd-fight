@@ -1,0 +1,2 @@
+PROJECT_NAME           = "nd-fight"
+@INCLUDE = ../mk/Doxyfile
