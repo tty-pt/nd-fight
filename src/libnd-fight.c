@@ -284,7 +284,9 @@ notify_attack(unsigned player_ref, unsigned target_ref, sic_str_t ss __attribute
 		}
 
 		if (hit.cdmg) {
-			i = buf_put(buf, i, sizeof(buf), ansi_fg[hit.color]);
+			const char *col = (hit.color >= BLACK && hit.color <= WHITE)
+				? ansi_fg[hit.color] : "";
+			i = buf_put(buf, i, sizeof(buf), col);
 			snprintf(num, sizeof(num), "%ld", hit.cdmg);
 			i = buf_put(buf, i, sizeof(buf), num);
 			i = buf_put(buf, i, sizeof(buf), ANSI_RESET);
@@ -404,6 +406,8 @@ XY_IMPL(hit_t, on_will_attack, unsigned, ref, double, dt)
 {
 	fighter_t fighter;
 	hit_t hit;
+	memset(&hit, 0, sizeof(hit));
+	hit.color = WHITE;
 
 	hit.wt = fighter_wt_chain(ref);
 	nd_get(fighter_hd, &fighter, &ref);
