@@ -45,13 +45,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#define FIGHT_IMPL
-#include <nd/fight.h>
+#include <nd/fight-types.h>
 
 #include <nd/attr.h>
 #include <nd/level.h>
-#define MORTAL_IMPL
-#include <nd/mortal.h>
 #include <nd/core.h>
 
 /* mortal_damage is called but not implemented here. The MORTAL_IMPL guard
