@@ -66,6 +66,13 @@ same command works either way. CI names the deps explicitly
 * The old `on_icon` body is now a `core_icon_decorate` decorator registered
   in `xy_install` (the shop precedent).
 
+## In-Game Commands (`man-src/`)
+
+| Command | Section | Description |
+|---------|---------|-------------|
+| `fight` | 10 | Initiate melee or ranged combat with a designated target |
+| `combo` | 10 | Chain complementary attack maneuvers for amplified damage |
+
 ## Testing
 
 There is no `test.sh` here. Behaviour is asserted by the engine's own suite:

@@ -1,4 +1,14 @@
-## 1.0.2
+## [1.1.0]
+
+- **Combat Target HUD Component (`ux/fight_ui.c`, `<nd/fight-ui.h>`)**:
+  - Implemented `nd_fight_render_target_hud()` rendering floating HUD combat billboard driven by live target vitality gauge.
+  - Adopted universal `BUD_DEFINE_STATE` and `BUD_SLOT_CONTRIBUTE` for combat target HUD slot registration.
+- **Two-Header Architecture (`<nd/fight-types.h>`)**:
+  - Extracted `<nd/fight-types.h>` defining combat types (`hit_t`) and removed `FIGHT_IMPL` preprocessor guards.
+- **Documentation**:
+  - Standardized README with man-src, art, and modder guide.
+
+## [1.0.2]
 
 - **The sibling `-I` lines are gone.** `CFLAGS += -I$(shell cd .. && pwd)/…`
   pointed at the axil-nd/nd sibling checkouts and only existed for a dev
