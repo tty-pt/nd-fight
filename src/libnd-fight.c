@@ -138,6 +138,9 @@ fighter_aggro(unsigned ref)
 	while (nd_next(&obj.location, &aggro_ref, c)) {
 		fighter_t aggro;
 
+		if (aggro_ref == ref)
+			continue;
+
 		if (nd_get(fighter_hd, &aggro, &aggro_ref))
 			continue;
 
@@ -455,13 +458,33 @@ XY_IMPL(int, on_mortal_life, unsigned, ref, double, dt)
 
 XY_IMPL(int, on_move, unsigned, player_ref)
 {
-	fighter_t fighter;
+	fighter_t fighter = { 0 };
 
-	nd_get(fighter_hd, &fighter, &player_ref);
+	if (nd_get(fighter_hd, &fighter, &player_ref) != 0)
+		return 0;
 
 	if (fighter.klock) {
-		nd_printf(player_ref, "You can't move while being targeted.\n");
-		return 1;
+		/* Verify if any entity in the room actually targets this player */
+		OBJ player;
+		int real_lock = 0;
+		if (nd_get(HD_OBJ, &player, &player_ref) == 0) {
+			unsigned c = nd_iter(HD_CONTENTS, &player.location);
+			unsigned other_ref;
+			while (nd_next(&player.location, &other_ref, c)) {
+				fighter_t other;
+				if (other_ref != player_ref &&
+				    nd_get(fighter_hd, &other, &other_ref) == 0 &&
+				    other.target == player_ref) {
+					real_lock++;
+				}
+			}
+		}
+		fighter.klock = (unsigned char)real_lock;
+		nd_put(fighter_hd, &player_ref, &fighter);
+		if (real_lock > 0) {
+			nd_printf(player_ref, "You can't move while being targeted.\n");
+			return 1;
+		}
 	}
 
 	return 0;
