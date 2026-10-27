@@ -1,4 +1,27 @@
-## 1.0.0
+## [1.1.0]
+
+- **Combat Target HUD Component (`ux/fight_ui.c`, `<nd/fight-ui.h>`)**:
+  - Implemented `nd_fight_render_target_hud()` rendering floating HUD combat billboard driven by live target vitality gauge.
+  - Adopted universal `BUD_DEFINE_STATE` and `BUD_SLOT_CONTRIBUTE` for combat target HUD slot registration.
+- **Two-Header Architecture (`<nd/fight-types.h>`)**:
+  - Extracted `<nd/fight-types.h>` defining combat types (`hit_t`) and removed `FIGHT_IMPL` preprocessor guards.
+- **Documentation**:
+  - Standardized README with man-src, art, and modder guide.
+
+## [1.0.2]
+
+- **The sibling `-I` lines are gone.** `CFLAGS += -I$(shell cd .. && pwd)/…`
+  pointed at the axil-nd/nd sibling checkouts and only existed for a dev
+  build: in CI those directories do not exist and every header comes from the
+  installed packages named in `.github/workflows/ci.yml`. The build now
+  resolves `<nd/…>` the way a packager sees it.
+- **macOS: link with `-undefined dynamic_lookup`.** macOS `ld` rejects
+  undefined symbols in a shared library, but `WARN` needs `qsyslog` — an
+  engine-provided function pointer resolved at `dlopen` time (Linux allows
+  this by default). `-undefined dynamic_lookup` is the Darwin equivalent, set
+  as `LDFLAGS-libnd-fight-Darwin` so no other platform is affected.
+
+## [1.0.0]
 
 - **nd-fight is now an installable library rather than a build artifact of
   the engine.** It builds and installs exactly two files,

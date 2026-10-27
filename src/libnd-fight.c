@@ -45,13 +45,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#define FIGHT_IMPL
-#include <nd/fight.h>
+#include <nd/fight-types.h>
 
 #include <nd/attr.h>
 #include <nd/level.h>
-#define MORTAL_IMPL
-#include <nd/mortal.h>
 #include <nd/core.h>
 
 /* mortal_damage is called but not implemented here. The MORTAL_IMPL guard
@@ -140,6 +137,9 @@ fighter_aggro(unsigned ref)
 	unsigned c = nd_iter(HD_CONTENTS, &obj.location);
 	while (nd_next(&obj.location, &aggro_ref, c)) {
 		fighter_t aggro;
+
+		if (aggro_ref == ref)
+			continue;
 
 		if (nd_get(fighter_hd, &aggro, &aggro_ref))
 			continue;
@@ -284,7 +284,9 @@ notify_attack(unsigned player_ref, unsigned target_ref, sic_str_t ss __attribute
 		}
 
 		if (hit.cdmg) {
-			i = buf_put(buf, i, sizeof(buf), ansi_fg[hit.color]);
+			const char *col = (hit.color >= BLACK && hit.color <= WHITE)
+				? ansi_fg[hit.color] : "";
+			i = buf_put(buf, i, sizeof(buf), col);
 			snprintf(num, sizeof(num), "%ld", hit.cdmg);
 			i = buf_put(buf, i, sizeof(buf), num);
 			i = buf_put(buf, i, sizeof(buf), ANSI_RESET);
@@ -404,6 +406,8 @@ XY_IMPL(hit_t, on_will_attack, unsigned, ref, double, dt)
 {
 	fighter_t fighter;
 	hit_t hit;
+	memset(&hit, 0, sizeof(hit));
+	hit.color = WHITE;
 
 	hit.wt = fighter_wt_chain(ref);
 	nd_get(fighter_hd, &fighter, &ref);
@@ -454,13 +458,33 @@ XY_IMPL(int, on_mortal_life, unsigned, ref, double, dt)
 
 XY_IMPL(int, on_move, unsigned, player_ref)
 {
-	fighter_t fighter;
+	fighter_t fighter = { 0 };
 
-	nd_get(fighter_hd, &fighter, &player_ref);
+	if (nd_get(fighter_hd, &fighter, &player_ref) != 0)
+		return 0;
 
 	if (fighter.klock) {
-		nd_printf(player_ref, "You can't move while being targeted.\n");
-		return 1;
+		/* Verify if any entity in the room actually targets this player */
+		OBJ player;
+		int real_lock = 0;
+		if (nd_get(HD_OBJ, &player, &player_ref) == 0) {
+			unsigned c = nd_iter(HD_CONTENTS, &player.location);
+			unsigned other_ref;
+			while (nd_next(&player.location, &other_ref, c)) {
+				fighter_t other;
+				if (other_ref != player_ref &&
+				    nd_get(fighter_hd, &other, &other_ref) == 0 &&
+				    other.target == player_ref) {
+					real_lock++;
+				}
+			}
+		}
+		fighter.klock = (unsigned char)real_lock;
+		nd_put(fighter_hd, &player_ref, &fighter);
+		if (real_lock > 0) {
+			nd_printf(player_ref, "You can't move while being targeted.\n");
+			return 1;
+		}
 	}
 
 	return 0;
@@ -500,8 +524,12 @@ do_fight(int fd, int argc __attribute__((unused)), char *argv[])
 
 XY_IMPL(int, on_status, unsigned, player_ref)
 {
-	fighter_t fighter;
-	nd_get(fighter_hd, &fighter, &player_ref);
+	fighter_t fighter = { 0 };
+	if (nd_get(fighter_hd, &fighter, &player_ref) != 0) {
+		fighter.target = NOTHING;
+		fighter.klock = 0;
+		nd_put(fighter_hd, &player_ref, &fighter);
+	}
 	nd_printf(player_ref, "Fight\tlock %3u\n", fighter.klock);
 	return 0;
 }
