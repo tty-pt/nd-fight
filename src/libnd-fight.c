@@ -524,8 +524,12 @@ do_fight(int fd, int argc __attribute__((unused)), char *argv[])
 
 XY_IMPL(int, on_status, unsigned, player_ref)
 {
-	fighter_t fighter;
-	nd_get(fighter_hd, &fighter, &player_ref);
+	fighter_t fighter = { 0 };
+	if (nd_get(fighter_hd, &fighter, &player_ref) != 0) {
+		fighter.target = NOTHING;
+		fighter.klock = 0;
+		nd_put(fighter_hd, &player_ref, &fighter);
+	}
 	nd_printf(player_ref, "Fight\tlock %3u\n", fighter.klock);
 	return 0;
 }
