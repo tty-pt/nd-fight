@@ -16,7 +16,7 @@
   installed packages named in `.github/workflows/ci.yml`. The build now
   resolves `<nd/…>` the way a packager sees it.
 - **macOS: link with `-undefined dynamic_lookup`.** macOS `ld` rejects
-  undefined symbols in a shared library, but `WARN` needs `qsyslog` — an
+  undefined symbols in a shared library, but `WARN` needs `stllog` — an
   engine-provided function pointer resolved at `dlopen` time (Linux allows
   this by default). `-undefined dynamic_lookup` is the Darwin equivalent, set
   as `LDFLAGS-libnd-fight-Darwin` so no other platform is affected.
