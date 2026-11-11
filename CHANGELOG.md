@@ -1,4 +1,9 @@
-## [1.1.0]
+## [Unreleased] (target: v1.0.4)
+
+### Changed
+- Refactored stllog logging comments, removed add-prefix paths, and cleaned dependencies.
+
+## [1.0.3]
 
 - **Combat Target HUD Component (`ux/fight_ui.c`, `<nd/fight-ui.h>`)**:
   - Implemented `nd_fight_render_target_hud()` rendering floating HUD combat billboard driven by live target vitality gauge.
@@ -16,7 +21,7 @@
   installed packages named in `.github/workflows/ci.yml`. The build now
   resolves `<nd/…>` the way a packager sees it.
 - **macOS: link with `-undefined dynamic_lookup`.** macOS `ld` rejects
-  undefined symbols in a shared library, but `WARN` needs `qsyslog` — an
+  undefined symbols in a shared library, but `WARN` needs `stllog` — an
   engine-provided function pointer resolved at `dlopen` time (Linux allows
   this by default). `-undefined dynamic_lookup` is the Darwin equivalent, set
   as `LDFLAGS-libnd-fight-Darwin` so no other platform is affected.
